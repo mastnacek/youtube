@@ -68,7 +68,7 @@ def rename_downloaded(new_files: set[Path], is_playlist: bool) -> list[Path]:
         stem = re.sub(r"^\d+[-_.\s]+", "", stem)
         clean = sanitize_name(stem)
 
-        new_name = f"{i:03d} - {clean}{path.suffix}" if is_playlist else f"{clean}{path.suffix}"
+        new_name = f"{i:02d} - {clean}{path.suffix}" if is_playlist else f"{clean}{path.suffix}"
         new_path = path.parent / new_name
 
         # Kolidující název → přidej suffix
