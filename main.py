@@ -169,6 +169,7 @@ def download(url: str, mode: str) -> bool:
         TextColumn("{task.description}"),
         TimeElapsedColumn(),
         console=console,
+        transient=True,
     ) as progress:
         task_id = progress.add_task("Připravuji...", total=100)
         tracker = ProgressTracker(progress, task_id)
