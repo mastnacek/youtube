@@ -1,5 +1,5 @@
 import sys
-import os
+import re
 from pathlib import Path
 
 # yt-dlp je lokalni zdrojak, pridame do path
@@ -17,6 +17,20 @@ from rich import box
 console = Console()
 
 DOWNLOAD_DIR = Path.home() / "Downloads" / "YouTube"
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+class SilentLogger:
+    """Potlači přímý výpis yt-dlp — vše jde přes rich."""
+    def debug(self, msg): pass
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -125,6 +139,7 @@ def build_opts(url: str, mode: str, tracker: ProgressTracker) -> dict:
         "quiet": True,
         "no_warnings": True,
         "noplaylist": False,
+        "logger": SilentLogger(),
     }
 
     if mode == "audio":
@@ -159,12 +174,16 @@ def download(url: str, mode: str) -> bool:
         tracker = ProgressTracker(progress, task_id)
         opts = build_opts(url, mode, tracker)
 
+        error_msg: str | None = None
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
         except yt_dlp.utils.DownloadError as e:
-            console.print(f"[red]Chyba stahování: {e}[/red]")
-            return False
+            error_msg = strip_ansi(str(e)).strip()
+
+    if error_msg:
+        console.print(f"[red]Chyba stahování:[/red] {error_msg}")
+        return False
 
     console.print(f"[bold green]✓ Staženo do:[/bold green] {DOWNLOAD_DIR}\n")
     return True
@@ -176,12 +195,13 @@ def fetch_info(url: str) -> dict | None:
         "no_warnings": True,
         "extract_flat": "in_playlist",
         "noplaylist": False,
+        "logger": SilentLogger(),
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
     except Exception as e:
-        console.print(f"[red]Nelze načíst info: {e}[/red]")
+        console.print(f"[red]Nelze načíst info:[/red] {strip_ansi(str(e)).strip()}")
         return None
 
 
