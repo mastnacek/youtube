@@ -38,8 +38,9 @@ class SilentLogger:
 
 
 # Windows + Linux zakázané znaky ve jménech souborů/složek
-_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?!*&,\x00-\x1f]')
 _URL_RE = re.compile(r'[\(\[]?(?:https?://|www\.)\S+[\)\]]?', re.IGNORECASE)
+# Whitelist: povoleny jsou jen pismena, cislice, mezera, pomlcka a tecka
+_ALLOWED_CHARS = re.compile(r'[^a-zA-Z0-9 \-]')
 # Windows rezervovaná jména (case-insensitive)
 _WIN_RESERVED = re.compile(
     r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.IGNORECASE
@@ -47,12 +48,12 @@ _WIN_RESERVED = re.compile(
 
 
 def sanitize_name(name: str) -> str:
-    """NFD dekompozice → ASCII (diacritika→base), drop emoji, URL a unsafe znaky (Windows+Linux)."""
+    """Whitelist sanitizace: diacritika→ASCII, drop URL/emoji, ponech jen [a-zA-Z0-9 -.]"""
     name = _URL_RE.sub("", name)
     name = unicodedata.normalize("NFD", name)
     name = name.encode("ascii", "ignore").decode("ascii")
-    name = _UNSAFE_CHARS.sub("", name)
-    name = re.sub(r"[\s_]+", " ", name).strip(" .")
+    name = _ALLOWED_CHARS.sub("", name)
+    name = re.sub(r" +", " ", name).strip(" .")
     if _WIN_RESERVED.match(name):
         name = f"_{name}"
     return name or "unknown"
