@@ -38,7 +38,7 @@ class SilentLogger:
 
 
 # Windows + Linux zakázané znaky ve jménech souborů/složek
-_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*&\x00-\x1f]')
 # Windows rezervovaná jména (case-insensitive)
 _WIN_RESERVED = re.compile(
     r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.IGNORECASE
