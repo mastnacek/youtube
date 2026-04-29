@@ -49,12 +49,15 @@ _WIN_RESERVED = re.compile(
 
 
 def sanitize_name(name: str) -> str:
-    """Whitelist sanitizace: diacritika→ASCII, drop URL/emoji, ponech jen [a-zA-Z0-9 -.]"""
+    """Whitelist sanitizace: diacritika→ASCII, drop URL/emoji, ponech jen [a-zA-Z0-9 -]"""
     name = _URL_RE.sub("", name)
     name = unicodedata.normalize("NFD", name)
     name = name.encode("ascii", "ignore").decode("ascii")
+    # Tečky a podtržítka → mezera (jinak by se slova slepila)
+    name = re.sub(r"[._]+", " ", name)
+    # Zbytek mimo whitelist pryč
     name = _ALLOWED_CHARS.sub("", name)
-    name = re.sub(r" +", " ", name).strip(" .")
+    name = re.sub(r" +", " ", name).strip()
     if _WIN_RESERVED.match(name):
         name = f"_{name}"
     return name or "unknown"
