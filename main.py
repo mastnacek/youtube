@@ -1,4 +1,5 @@
 import sys
+import os
 import re
 import unicodedata
 from pathlib import Path
@@ -276,6 +277,68 @@ def fetch_info(url: str) -> dict | None:
         return None
 
 
+def sanitize_existing(root: Path) -> None:
+    """Projde složku a podslozky a přejmenuje soubory + složky podle whitelist sanitizace.
+    Prochází bottom-up, aby přejmenování složky nerozhodilo cesty k souborům uvnitř."""
+    renamed_files = 0
+    renamed_dirs = 0
+
+    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+        current = Path(dirpath)
+
+        # Soubory
+        for fname in filenames:
+            fpath = current / fname
+            stem = fpath.stem
+            suffix = fpath.suffix
+            clean_stem = sanitize_name(stem)
+            new_path = current / f"{clean_stem}{suffix}"
+
+            if fpath == new_path:
+                continue
+            # Kolidující název
+            if new_path.exists():
+                j = 2
+                while new_path.exists():
+                    new_path = current / f"{clean_stem} ({j}){suffix}"
+                    j += 1
+            fpath.rename(new_path)
+            console.print(f"  [dim]{fname}[/dim] → [cyan]{new_path.name}[/cyan]")
+            renamed_files += 1
+
+        # Složky (vynecháme root)
+        if current == root:
+            continue
+        clean_dir = sanitize_name(current.name)
+        new_dir = current.parent / clean_dir
+        if current != new_dir:
+            if new_dir.exists():
+                j = 2
+                while new_dir.exists():
+                    new_dir = current.parent / f"{clean_dir} ({j})"
+                    j += 1
+            current.rename(new_dir)
+            console.print(f"  [dim]{current.name}/[/dim] → [cyan]{new_dir.name}/[/cyan]")
+            renamed_dirs += 1
+
+    console.print(
+        f"\n[bold green]✓ Přejmenováno:[/bold green] "
+        f"{renamed_files} soubor(ů), {renamed_dirs} složek"
+    )
+
+
+def sanitize_folder_flow() -> None:
+    path_str = Prompt.ask("\n[bold yellow]Cesta ke složce[/bold yellow]")
+    path = Path(path_str.strip()).expanduser()
+
+    if not path.exists() or not path.is_dir():
+        console.print(f"[red]Složka neexistuje:[/red] {path}")
+        return
+
+    console.print(f"\n[dim]Sanitizuji: {path}[/dim]\n")
+    sanitize_existing(path)
+
+
 def choose_mode() -> str:
     console.print("\n[bold]Co chceš stáhnout?[/bold]")
     console.print("  [cyan]1[/cyan]  Audio → MP3 192 kbps (s cover artem)")
@@ -289,14 +352,26 @@ def main():
 
     while True:
         console.print()
-        console.print(Rule("[dim]Nové stahování[/dim]"))
+        console.print(Rule())
+        console.print("  [cyan]1[/cyan]  Stáhnout video / playlist")
+        console.print("  [cyan]2[/cyan]  Sanitizovat existující složku")
+        console.print("  [cyan]q[/cyan]  Konec\n")
 
-        url = Prompt.ask("\n[bold yellow]URL[/bold yellow]  (video nebo playlist, [dim]q[/dim] = konec)")
-        if url.strip().lower() in ("q", "quit", "exit", ""):
+        action = Prompt.ask("Volba", choices=["1", "2", "q"], default="1")
+
+        if action == "q":
             console.print("\n[dim]Nashledanou, mistře Jardo![/dim]")
             break
 
+        if action == "2":
+            sanitize_folder_flow()
+            continue
+
+        # --- stahování ---
+        url = Prompt.ask("\n[bold yellow]URL[/bold yellow]  (video nebo playlist)")
         url = url.strip()
+        if not url:
+            continue
 
         console.print("\n[dim]Načítám informace...[/dim]")
         info = fetch_info(url)
