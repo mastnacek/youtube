@@ -129,12 +129,17 @@ class ProgressTracker:
             )
 
 
+TEMP_DIR = Path("/tmp/yt-dlp-work")
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def build_opts(url: str, mode: str, tracker: ProgressTracker) -> dict:
     is_playlist = "list=" in url or "playlist" in url
-    outtmpl = str(DOWNLOAD_DIR / ("%(playlist_index)s-%(title)s.%(ext)s" if is_playlist else "%(title)s.%(ext)s"))
+    filename = "%(playlist_index)s-%(title)s.%(ext)s" if is_playlist else "%(title)s.%(ext)s"
 
     base = {
-        "outtmpl": outtmpl,
+        "outtmpl": str(DOWNLOAD_DIR / filename),
+        "paths": {"temp": str(TEMP_DIR)},   # .part a thumbnaily jdou do /tmp
         "progress_hooks": [tracker.hook],
         "quiet": True,
         "no_warnings": True,
@@ -145,11 +150,17 @@ def build_opts(url: str, mode: str, tracker: ProgressTracker) -> dict:
     if mode == "audio":
         return {
             **base,
+            # bestaudio = opus/webm na YouTube — nejvyšší kvalita zdroje
             "format": "bestaudio/best",
             "writethumbnail": True,
             "postprocessors": [
+                # 1) opus/webm → mp3 192 kbps
                 {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"},
+                # 2) YouTube thumbnail je webp — převedeme na jpg (EmbedThumbnail to jinak odmítne)
+                {"key": "FFmpegThumbnailsConvertor", "format": "jpg"},
+                # 3) vloží ID3 metadata (název, interpret...)
                 {"key": "FFmpegMetadata", "add_metadata": True},
+                # 4) vloží cover art do MP3
                 {"key": "EmbedThumbnail"},
             ],
         }
