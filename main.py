@@ -34,20 +34,26 @@ def strip_ansi(text: str) -> str:
 
 class SilentLogger:
     """Potlačí přímý výpis yt-dlp — vše jde přes rich."""
-    def debug(self, msg): pass
-    def info(self, msg): pass
-    def warning(self, msg): pass
-    def error(self, msg): pass
+
+    def debug(self, msg):
+        pass
+
+    def info(self, msg):
+        pass
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        pass
 
 
 # Windows + Linux zakázané znaky ve jménech souborů/složek
-_URL_RE = re.compile(r'[\(\[]?(?:https?://|www\.)\S+[\)\]]?', re.IGNORECASE)
+_URL_RE = re.compile(r"[\(\[]?(?:https?://|www\.)\S+[\)\]]?", re.IGNORECASE)
 # Whitelist: povoleny jsou jen pismena, cislice, mezera, pomlcka a tecka
-_ALLOWED_CHARS = re.compile(r'[^a-zA-Z0-9 \-]')
+_ALLOWED_CHARS = re.compile(r"[^a-zA-Z0-9 \-]")
 # Windows rezervovaná jména (case-insensitive)
-_WIN_RESERVED = re.compile(
-    r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.IGNORECASE
-)
+_WIN_RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", re.IGNORECASE)
 
 
 def sanitize_name(name: str) -> str:
@@ -76,7 +82,11 @@ def rename_downloaded(new_files: set[Path], is_playlist: bool) -> list[Path]:
         stem = re.sub(r"^\d+[-_.\s]+", "", stem)
         clean = sanitize_name(stem)
 
-        new_name = f"{i:02d} - {clean}{path.suffix}" if is_playlist else f"{clean}{path.suffix}"
+        new_name = (
+            f"{i:02d} - {clean}{path.suffix}"
+            if is_playlist
+            else f"{clean}{path.suffix}"
+        )
         new_path = path.parent / new_name
 
         # Kolidující název → přidej suffix
@@ -94,12 +104,14 @@ def rename_downloaded(new_files: set[Path], is_playlist: bool) -> list[Path]:
 
 
 def print_banner():
-    console.print(Panel.fit(
-        "[bold yellow]YouTube Downloader[/bold yellow]\n"
-        "[dim]Powered by yt-dlp + rich[/dim]",
-        border_style="yellow",
-        padding=(1, 4),
-    ))
+    console.print(
+        Panel.fit(
+            "[bold yellow]YouTube Downloader[/bold yellow]\n"
+            "[dim]Powered by yt-dlp + rich[/dim]",
+            border_style="yellow",
+            padding=(1, 4),
+        )
+    )
 
 
 def format_size(bytes_val):
@@ -132,15 +144,23 @@ def show_info(info: dict):
         entries = [e for e in (info.get("entries") or []) if e is not None]
         table = Table(
             title=f"[bold]Playlist: {info.get('title', 'Neznámý')}[/bold]",
-            box=box.ROUNDED, border_style="cyan", show_lines=True,
+            box=box.ROUNDED,
+            border_style="cyan",
+            show_lines=True,
         )
         table.add_column("#", style="dim", width=4)
         table.add_column("Název", style="white")
         table.add_column("Délka", style="green", justify="right")
         for i, entry in enumerate(entries, 1):
-            table.add_row(str(i), entry.get("title", "Neznámé"), format_duration(entry.get("duration")))
+            table.add_row(
+                str(i),
+                entry.get("title", "Neznámé"),
+                format_duration(entry.get("duration")),
+            )
         console.print(table)
-        console.print(f"[dim]Celkem {len(entries)} videí | Uložit do: {DOWNLOAD_DIR}[/dim]")
+        console.print(
+            f"[dim]Celkem {len(entries)} videí | Uložit do: {DOWNLOAD_DIR}[/dim]"
+        )
     else:
         table = Table(box=box.ROUNDED, border_style="cyan", show_header=False)
         table.add_column("Klíč", style="bold cyan", width=14)
@@ -173,16 +193,23 @@ class ProgressTracker:
 
             pct = (downloaded / total * 100) if total else 0
             self._progress.update(
-                self._task, completed=pct,
+                self._task,
+                completed=pct,
                 description=f"[cyan]{title_short}[/cyan] [dim]{speed_str} | eta {eta_str}[/dim]",
             )
         elif d["status"] == "finished":
-            self._progress.update(self._task, completed=100, description="[green]Zpracovávám...[/green]")
+            self._progress.update(
+                self._task, completed=100, description="[green]Zpracovávám...[/green]"
+            )
 
 
-def build_opts(mode: str, is_playlist: bool, tracker: ProgressTracker, out_dir: Path) -> dict:
+def build_opts(
+    mode: str, is_playlist: bool, tracker: ProgressTracker, out_dir: Path
+) -> dict:
     # Playlist: velký numerický prefix pro správné řazení po stažení
-    filename = "%(playlist_index)05d-%(title)s.%(ext)s" if is_playlist else "%(title)s.%(ext)s"
+    filename = (
+        "%(playlist_index)05d-%(title)s.%(ext)s" if is_playlist else "%(title)s.%(ext)s"
+    )
 
     base = {
         "outtmpl": str(out_dir / filename),
@@ -190,7 +217,7 @@ def build_opts(mode: str, is_playlist: bool, tracker: ProgressTracker, out_dir: 
         "quiet": True,
         "no_warnings": True,
         "noplaylist": False,
-        "ignoreerrors": True,       # přeskočí nedostupná videa v playlistu
+        "ignoreerrors": True,  # přeskočí nedostupná videa v playlistu
         "logger": SilentLogger(),
         # YouTube 2026: klasická (https) URL servíruje jen prvních ~1 MiB streamu
         # (SABR enforcement), proto preferujeme HLS (m3u8) formáty z visionos
@@ -208,7 +235,11 @@ def build_opts(mode: str, is_playlist: bool, tracker: ProgressTracker, out_dir: 
             "writethumbnail": True,
             "postprocessors": [
                 # 1) opus/webm → mp3 192 kbps
-                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"},
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                },
                 # 2) YT thumbnail je webp — EmbedThumbnail potřebuje jpg
                 {"key": "FFmpegThumbnailsConvertor", "format": "jpg"},
                 # 3) ID3 metadata
@@ -234,6 +265,13 @@ def resolve_output_dir(info: dict) -> Path:
         out.mkdir(parents=True, exist_ok=True)
         return out
     return DOWNLOAD_DIR
+
+
+def write_m3u(out_dir: Path, tracks: list[Path]) -> Path:
+    """Zapíše .m3u soubor se seznamem stop (relativní cesty, pořadí dle čísla)."""
+    m3u = out_dir / f"{out_dir.name}.m3u"
+    m3u.write_text("\n".join(t.name for t in tracks) + "\n", encoding="utf-8")
+    return m3u
 
 
 def download(url: str, mode: str, info: dict) -> bool:
@@ -272,12 +310,20 @@ def download(url: str, mode: str, info: dict) -> bool:
         return False
 
     renamed = rename_downloaded(new_files, is_playlist)
-    console.print(f"[bold green]✓ Staženo {len(renamed)} soubor(ů) do:[/bold green] {out_dir}\n")
+    console.print(
+        f"[bold green]✓ Staženo {len(renamed)} soubor(ů) do:[/bold green] {out_dir}\n"
+    )
 
     # ignoreerrors potichu přeskakuje neúspěšné položky — ověříme výsledek podle skutečných médií
     expected = len([e for e in (info.get("entries") or []) if e]) if is_playlist else 1
     media_exts = {".mp3", ".m4a", ".opus", ".webm", ".mp4", ".mkv"}
     media = [p for p in renamed if p.suffix.lower() in media_exts]
+
+    # .m3u se vytvoří jen u playlistů — seznam toho, co reálně přišlo
+    if is_playlist and media:
+        m3u = write_m3u(out_dir, media)
+        console.print(f"[bold green]✓ Playlist:[/bold green] {m3u}")
+
     if retcode or len(media) < expected:
         console.print(
             f"[red]⚠ Pozor: staženo jen {len(media)} z {expected} položek "
@@ -343,7 +389,9 @@ def sanitize_existing(root: Path) -> None:
                     new_dir = current.parent / f"{clean_dir} ({j})"
                     j += 1
             current.rename(new_dir)
-            console.print(f"  [dim]{current.name}/[/dim] → [cyan]{new_dir.name}/[/cyan]")
+            console.print(
+                f"  [dim]{current.name}/[/dim] → [cyan]{new_dir.name}/[/cyan]"
+            )
             renamed_dirs += 1
 
     console.print(
