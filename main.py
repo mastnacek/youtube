@@ -1,27 +1,29 @@
-import sys
 import os
 import re
 import unicodedata
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent / "yt-dlp"))
+from typing import Any
 
 import yt_dlp
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Prompt, Confirm
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.prompt import Confirm, Prompt
 from rich.rule import Rule
-from rich import box
+from rich.table import Table
+from yt_dlp.utils import DownloadError
 
 console = Console()
 
 DOWNLOAD_DIR = Path.home() / "Downloads" / "YouTube"
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-TEMP_DIR = Path("/tmp/yt-dlp-work")
-TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -113,7 +115,10 @@ def format_size(bytes_val):
 def format_duration(seconds):
     if seconds is None:
         return "?"
-    m, s = divmod(int(seconds), 60)
+    try:
+        m, s = divmod(int(seconds), 60)
+    except (TypeError, ValueError):
+        return "?"
     h, m = divmod(m, 60)
     if h:
         return f"{h}:{m:02d}:{s:02d}"
@@ -181,19 +186,25 @@ def build_opts(mode: str, is_playlist: bool, tracker: ProgressTracker, out_dir: 
 
     base = {
         "outtmpl": str(out_dir / filename),
-        "paths": {"temp": str(TEMP_DIR)},
         "progress_hooks": [tracker.hook],
         "quiet": True,
         "no_warnings": True,
         "noplaylist": False,
         "ignoreerrors": True,       # přeskočí nedostupná videa v playlistu
         "logger": SilentLogger(),
+        # YouTube 2026: klasická (https) URL servíruje jen prvních ~1 MiB streamu
+        # (SABR enforcement), proto preferujeme HLS (m3u8) formáty z visionos
+        # klienta, které stahují po segmentech celý soubor.
+        # Vyžaduje yt-dlp PR #13515 + bgutil PO token provider + deno (EJS).
+        "remote_components": ["ejs:github"],
+        "allow_playlist_files": False,
     }
 
     if mode == "audio":
         return {
             **base,
-            "format": "bestaudio/best",   # opus/webm = nejvyšší kvalita na YT
+            # HLS první — https formáty jsou zkrácené na ~1 MiB (viz komentář v base)
+            "format": "bestaudio[protocol^=m3u8]/bestaudio/best",
             "writethumbnail": True,
             "postprocessors": [
                 # 1) opus/webm → mp3 192 kbps
@@ -209,7 +220,7 @@ def build_opts(mode: str, is_playlist: bool, tracker: ProgressTracker, out_dir: 
 
     return {
         **base,
-        "format": "bestvideo+bestaudio/best",
+        "format": "bestvideo[protocol^=m3u8]+bestaudio[protocol^=m3u8]/bestvideo+bestaudio/best",
         "merge_output_format": "mp4",
     }
 
@@ -230,6 +241,7 @@ def download(url: str, mode: str, info: dict) -> bool:
     out_dir = resolve_output_dir(info)
     before = set(out_dir.glob("*"))
     error_msg: str | None = None
+    retcode = 0
 
     with Progress(
         SpinnerColumn(),
@@ -242,12 +254,12 @@ def download(url: str, mode: str, info: dict) -> bool:
     ) as progress:
         task_id = progress.add_task("Připravuji...", total=100)
         tracker = ProgressTracker(progress, task_id)
-        opts = build_opts(mode, is_playlist, tracker, out_dir)
+        opts: Any = build_opts(mode, is_playlist, tracker, out_dir)
 
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.download([url])
-        except yt_dlp.utils.DownloadError as e:
+                retcode = ydl.download([url])
+        except DownloadError as e:
             error_msg = strip_ansi(str(e)).strip()
 
     if error_msg:
@@ -261,11 +273,21 @@ def download(url: str, mode: str, info: dict) -> bool:
 
     renamed = rename_downloaded(new_files, is_playlist)
     console.print(f"[bold green]✓ Staženo {len(renamed)} soubor(ů) do:[/bold green] {out_dir}\n")
+
+    # ignoreerrors potichu přeskakuje neúspěšné položky — ověříme výsledek podle skutečných médií
+    expected = len([e for e in (info.get("entries") or []) if e]) if is_playlist else 1
+    media_exts = {".mp3", ".m4a", ".opus", ".webm", ".mp4", ".mkv"}
+    media = [p for p in renamed if p.suffix.lower() in media_exts]
+    if retcode or len(media) < expected:
+        console.print(
+            f"[red]⚠ Pozor: staženo jen {len(media)} z {expected} položek "
+            f"(yt-dlp retcode={retcode}). Zkus to znovu, nebo zkontroluj výše.[/red]"
+        )
     return True
 
 
-def fetch_info(url: str) -> dict | None:
-    opts = {
+def fetch_info(url: str) -> Any:
+    opts: Any = {
         "quiet": True,
         "no_warnings": True,
         "extract_flat": "in_playlist",
@@ -286,7 +308,7 @@ def sanitize_existing(root: Path) -> None:
     renamed_files = 0
     renamed_dirs = 0
 
-    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+    for dirpath, _dirnames, filenames in os.walk(root, topdown=False):
         current = Path(dirpath)
 
         # Soubory
@@ -381,7 +403,6 @@ def main():
         if info is None:
             continue
 
-        is_playlist = info.get("_type") == "playlist"
         console.print()
         show_info(info)
 

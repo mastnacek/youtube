@@ -4,9 +4,14 @@ version = "0.1.0"
 description = "YouTube downloader TUI with rich and yt-dlp"
 requires-python = ">=3.10"
 dependencies = [
+    "bgutil-ytdlp-pot-provider>=1.3.1",
+    "protobug>=1.0.0",
     "rich>=15.0.0",
-    "yt-dlp>=2026.3.17",
+    "yt-dlp",
 ]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+yt-dlp = { git = "https://github.com/yt-dlp/yt-dlp", rev = "refs/pull/13515/head" }
